@@ -1,0 +1,12 @@
+/target
+/tools/*
+# 发布/更新相关脚本要入库（其余 tools 下内容如 mingw64 工具链仍忽略）
+!/tools/update_server.py
+!/tools/publish_drop.bat
+/dist/
+/testdata/
+*.log
+build.done
+/*.png
+# 图标源文件需要入库（build.rs 与 make_ico.ps1 依赖它生成 ico）
+!/rabbit.png

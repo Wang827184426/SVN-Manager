@@ -1,0 +1,25 @@
+﻿[package]
+name = "svn_manager"
+version = "1.1.11"
+edition = "2021"
+description = "SVN 管理器 (SVN working-copy manager)"
+
+[dependencies]
+eframe = { version = "0.36.1", default-features = false, features = ["glow", "default_fonts", "links"] }
+egui = "0.36.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+roxmltree = "0.21.1"
+chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
+encoding_rs = "0.8.35"
+rfd = "0.17.2"
+
+# 开机自启：直接写 HKCU Run 键（rfd 已带入 0.60，不再多拉依赖）
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Registry"] }
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 8
+strip = true
