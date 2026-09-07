@@ -2414,7 +2414,7 @@ impl SvnApp {
                     let width = (ui.available_width() - 250.0).max(200.0);
                     let field = ui.add(
                         TextEdit::singleline(&mut self.new_path)
-                            .hint_text(r"工作副本目录，例如 D:\Program\Work\hhyp\Code\HRP_local")
+                            .hint_text(r"工作副本目录，例如 C:\Test")
                             .desired_width(width),
                     );
                     let enter = field.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter));
@@ -2962,7 +2962,7 @@ impl SvnApp {
             .default_size(Vec2::new(660.0, 430.0))
             .show(ctx, |ui| {
                 ScrollArea::vertical().id_salt("settings").show(ui, |ui| {
-                    ui.label(RichText::new("svn.exe 路径（如果显示“无法添加工作副本”，请重新安装svn，并且勾选“command line client tools”）").strong());
+                    ui.label(RichText::new("svn.exe 路径").strong());
                     ui.horizontal(|ui| {
                         ui.add_sized(
                             Vec2::new((ui.available_width() - 150.0).max(180.0), 22.0),
@@ -2980,6 +2980,7 @@ impl SvnApp {
                             }
                         }
                     });
+                    ui.label(RichText::new("如果显示“无法添加工作副本”，请重新安装svn，并且勾选“command line client tools”").weak());
                     ui.horizontal(|ui| {
                         if ui.button("应用此路径").clicked() {
                             let exe = self.cfg.svn_exe.clone();
@@ -2999,7 +3000,7 @@ impl SvnApp {
                             ));
                             self.hint("已在默认浏览器打开 TortoiseSVN 下载页");
                         }
-                        ui.label(RichText::new(format!("当前版本：{version}")).weak());
+                        ui.label(RichText::new(format!("当前SVN版本：{version}")).weak());
                     });
                     if !candidates.is_empty() {
                         ui.collapsing(format!("检测到的候选（{} 个）", candidates.len()), |ui| {
@@ -3159,10 +3160,10 @@ impl SvnApp {
                             ui.add(TextEdit::singleline(&mut self.cfg.auth_user).desired_width(180.0));
                         });
                         ui.horizontal(|ui| {
-                            ui.label("密码   ");
+                            ui.label("密码    ");
                             ui.add(TextEdit::singleline(&mut self.cfg.auth_pass).password(true).desired_width(180.0));
                         });
-                        if ui.button("保存账号").clicked() {
+                        if ui.button("保存账号信息").clicked() {
                             self.svn.username = self.cfg.auth_user.clone();
                             self.svn.password = self.cfg.auth_pass.clone();
                             self.persist();
@@ -3258,7 +3259,7 @@ impl SvnApp {
                         ui.label(RichText::new("版本更新").strong());
                         ui.label(
                             RichText::new(
-                                "服务端地址：启动时读取 {地址}/latest.json 判断是否有新版本（服务端可用 tools/update_server.py）",
+                                "在下方填写服务端托管地址，启动时会自动检测是否有新版本发布",
                             )
                             .size(11.5)
                             .weak(),
@@ -3302,7 +3303,7 @@ impl SvnApp {
                         });
                         ui.label(RichText::new(format!("当前版本：V{APP_VERSION}")).size(11.5).weak());
                         if let Some(m) = &self.update_info {
-                            let mut line = format!("服务端最新：V{}", m.version.trim());
+                            let mut line = format!("最新版本：V{}", m.version.trim());
                             if !m.published_at.trim().is_empty() {
                                 line.push_str(&format!("（发布于 {}）", m.published_at.trim()));
                             }

@@ -300,7 +300,7 @@ impl SvnApp {
                 ui.label(RichText::new("条数").weak().size(12.0));
                 ui.add_sized(
                     Vec2::new(300.0, 22.0),
-                    TextEdit::singleline(&mut page.filter).hint_text("按说明 / 作者 / 路径过滤（命中处高亮）"),
+                    TextEdit::singleline(&mut page.filter).hint_text("按说明 / 作者 / 路径过滤"),
                 );
             });
         });
