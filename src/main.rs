@@ -1995,7 +1995,9 @@ impl SvnApp {
                         self.show_worklog = true;
                     }
                 }
-                // 检查到新版本时这里常驻入口，点击直接弹确认框，确认后即开始更新
+                // 检查到新版本时这里常驻入口，点击直接弹确认框，确认后即开始更新。
+                // 文字七彩循环：HSV 色相随时间转圈（0=红 → 黄 → 绿 → 青 → 蓝 → 紫 → 红），
+                // 约 4 秒一圈；按钮在屏幕上就要持续重绘，否则颜色不会动。
                 if self
                     .update_info
                     .as_ref()
@@ -2006,8 +2008,15 @@ impl SvnApp {
                         .as_ref()
                         .map(|m| m.version.trim().to_owned())
                         .unwrap_or_default();
+                    let hue = (ui.input(|i| i.time) / 4.0) % 1.0;
+                    let rainbow = egui::ecolor::Hsva::new(hue as f32, 0.92, 0.85, 1.0);
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(66));
                     if ui
-                        .button(RichText::new(format!("↑ 新版本 V{latest}")).strong())
+                        .button(
+                            RichText::new(format!("↑ 新版本 V{latest}"))
+                                .strong()
+                                .color(rainbow),
+                        )
                         .on_hover_text("有可用更新，点击确认后直接开始（下载新版本并覆盖重启）")
                         .clicked()
                     {
