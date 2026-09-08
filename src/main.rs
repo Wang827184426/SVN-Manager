@@ -1959,45 +1959,9 @@ impl SvnApp {
                 ui.label(RichText::new(format!("{running} 个任务：{label}")).weak().size(12.0));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                // AI 日志：右上角的开关式入口。第一次点开启「日志模式」（各目录提交记录页
-                // 里本人提交的版本行出现勾选框）；开着但没勾选时显示「取消日志模式」，再点
-                // 退出；有勾选后显示数量，点击弹出「AI 工作日志」窗口（模式保持开启，
-                // 方便关掉窗口后去别的目录继续勾）。
-                let picks = self.ai_picks.len();
-                let (ai_label, ai_hover) = if !self.ai_mode {
-                    (
-                        "AI 日志".to_owned(),
-                        "开启日志模式：各目录「提交记录」页里本人提交的版本行会出现勾选框，\n\
-                         勾选后本按钮变成「AI 日志（N）」，点击弹出「AI 工作日志」窗口".to_owned(),
-                    )
-                } else if picks == 0 {
-                    (
-                        "取消日志模式".to_owned(),
-                        "退出日志模式：隐藏提交记录页里的勾选框（已勾选的提交保留，重新开启后继续显示）".to_owned(),
-                    )
-                } else {
-                    (
-                        format!("AI 日志（{picks}）"),
-                        "打开「AI 工作日志」窗口：把勾选的提交交给 AI，按「口吻」整理成工作日志\n\
-                         （接口在 设置 → AI 日志 里配置；模式保持开启，可到其他目录继续勾选）".to_owned(),
-                    )
-                };
-                if ui
-                    .button(RichText::new(ai_label).strong())
-                    .on_hover_text(ai_hover)
-                    .clicked()
-                {
-                    if !self.ai_mode {
-                        self.ai_mode = true;
-                    } else if picks == 0 {
-                        self.ai_mode = false;
-                    } else {
-                        self.show_worklog = true;
-                    }
-                }
                 // 检查到新版本时这里常驻入口，点击直接弹确认框，确认后即开始更新。
-                // 文字七彩循环：HSV 色相随时间转圈（0=红 → 黄 → 绿 → 青 → 蓝 → 紫 → 红），
-                // 约 4 秒一圈；按钮在屏幕上就要持续重绘，否则颜色不会动。
+                // 文字七彩流动：每个字错开一点色相（LayoutJob 逐字上色），整行铺满一道
+                // 彩虹并随时间向前流动，约 4 秒转一圈；按钮在屏幕上就要持续重绘。
                 if self
                     .update_info
                     .as_ref()
@@ -2008,15 +1972,24 @@ impl SvnApp {
                         .as_ref()
                         .map(|m| m.version.trim().to_owned())
                         .unwrap_or_default();
-                    let hue = (ui.input(|i| i.time) / 4.0) % 1.0;
-                    let rainbow = egui::ecolor::Hsva::new(hue as f32, 0.92, 0.85, 1.0);
+                    let text = format!("↑ 新版本 V{latest}");
+                    let base = (ui.input(|i| i.time) / 4.0) % 1.0;
+                    // 深色主题用亮色，浅色主题（白底）压暗到一半亮度，否则会看不清
+                    let (sat, val) = if ui.visuals().dark_mode { (0.92, 0.85) } else { (0.95, 0.55) };
+                    let font = egui::TextStyle::Button.resolve(ui.style());
+                    let mut job = egui::text::LayoutJob::default();
+                    for (index, ch) in text.chars().enumerate() {
+                        let hue = ((base + index as f64 / 12.0) % 1.0) as f32;
+                        let color = egui::Color32::from(egui::ecolor::Hsva::new(hue, sat, val, 1.0));
+                        job.append(
+                            &ch.to_string(),
+                            0.0,
+                            egui::TextFormat::simple(font.clone(), color),
+                        );
+                    }
                     ui.ctx().request_repaint_after(std::time::Duration::from_millis(66));
                     if ui
-                        .button(
-                            RichText::new(format!("↑ 新版本 V{latest}"))
-                                .strong()
-                                .color(rainbow),
-                        )
+                        .button(job)
                         .on_hover_text("有可用更新，点击确认后直接开始（下载新版本并覆盖重启）")
                         .clicked()
                     {
@@ -2057,6 +2030,43 @@ impl SvnApp {
                     .clicked()
                 {
                     self.open_bcompare_matched();
+                }
+                // AI 日志：排在 Beyond Compare 之后、与其他按钮同款配色（不加粗）。
+                // 开关式入口：第一次点开启「日志模式」（各目录提交记录页里本人提交的
+                // 版本行出现勾选框）；开着但没勾选时显示「取消日志模式」，再点退出；
+                // 有勾选后显示数量，点击弹出「AI 工作日志」窗口（模式保持开启，
+                // 方便关掉窗口后去别的目录继续勾）。
+                let picks = self.ai_picks.len();
+                let (ai_label, ai_hover) = if !self.ai_mode {
+                    (
+                        "AI 日志".to_owned(),
+                        "开启日志模式：各目录「提交记录」页里本人提交的版本行会出现勾选框，\n\
+                         勾选后本按钮变成「AI 日志（N）」，点击弹出「AI 工作日志」窗口".to_owned(),
+                    )
+                } else if picks == 0 {
+                    (
+                        "取消日志模式".to_owned(),
+                        "退出日志模式：隐藏提交记录页里的勾选框（已勾选的提交保留，重新开启后继续显示）".to_owned(),
+                    )
+                } else {
+                    (
+                        format!("AI 日志（{picks}）"),
+                        "打开「AI 工作日志」窗口：把勾选的提交交给 AI，按「口吻」整理成工作日志\n\
+                         （接口在 设置 → AI 日志 里配置；模式保持开启，可到其他目录继续勾选）".to_owned(),
+                    )
+                };
+                if ui
+                    .button(ai_label)
+                    .on_hover_text(ai_hover)
+                    .clicked()
+                {
+                    if !self.ai_mode {
+                        self.ai_mode = true;
+                    } else if picks == 0 {
+                        self.ai_mode = false;
+                    } else {
+                        self.show_worklog = true;
+                    }
                 }
             });
         });
