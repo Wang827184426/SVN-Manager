@@ -125,7 +125,8 @@ fn host_of(url: &str) -> &str {
 /// 更新地址是否指向内网 / 本机。内网地址绝不该走系统代理：
 /// 代理客户端（Clash 等）通过 http_proxy 环境变量劫持 curl 后，
 /// 内网请求会被转发到远端节点，结果是超时或 502，永远连不到局域网服务器。
-fn is_private_host(url: &str) -> bool {
+/// AI 日志等其它模块发请求时也用它判断要不要 `--noproxy`。
+pub fn is_private_host(url: &str) -> bool {
     let host = host_of(url).to_ascii_lowercase();
     if host == "localhost" || host.starts_with("127.") || host == "::1" {
         return true;
@@ -147,7 +148,8 @@ fn is_private_host(url: &str) -> bool {
 
 /// 找系统自带的 curl.exe（Win10 1803+）。
 /// 32 位进程访问 System32 会被重定向到 SysWOW64（同样带 curl），Sysnative 兜底。
-fn find_curl() -> Option<PathBuf> {
+/// AI 日志模块发 HTTPS 请求也复用它，不用另带 HTTP 依赖。
+pub fn find_curl() -> Option<PathBuf> {
     for path in [
         PathBuf::from(r"C:\Windows\System32\curl.exe"),
         PathBuf::from(r"C:\Windows\Sysnative\curl.exe"),

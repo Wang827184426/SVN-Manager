@@ -200,4 +200,45 @@ mod tests {
         output.textures_delta.clear();
         assert!(widths[0] > 0.0 && widths[1] > 0.0, "{widths:?}");
     }
+
+    /// 界面里用到的特殊符号必须真的有字形，否则会渲染成方块（tofu）。
+    /// 教训：✕(U+2715) 在中文字体和 egui 内置字体里都没有，用户看到的就是方块。
+    /// 这里逐一检查正文（Proportional）字族：缺一个就在用它的地方换字。
+    #[test]
+    fn ui_symbols_have_glyphs() {
+        let ctx = Context::default();
+        install_cjk(&ctx);
+        let mut output = ctx.run_ui(RawInput::default(), |ui| {
+            // 字体要等第一次 run_ui 排版后才就绪，所以检查放在 UI 闭包里
+            let body = FontId::proportional(12.0);
+            // 界面字符串里用到的全部特殊符号。曾用过 📂🕘⬆⬇📝✨🔗✖✏，
+            // 实测这些 emoji 在中文字体和 egui 内置字体里都没有字形（渲染成方块），
+            // 已全部换成下面这些实测有字形的符号或纯文本。
+            let symbols = [
+                ('×', "AI 日志移除按钮"),
+                ('←', "返回目录按钮"),
+                ('→', "补充目录按钮 / 日志行"),
+                ('↑', "上传按钮 / 新版本提示"),
+                ('↓', "更新按钮"),
+                ('●', "状态灯"),
+                ('✓', "提交成功提示 / relocate 按钮"),
+                ('↔', "换行符说明"),
+                ('⚖', "绑定对比对象菜单"),
+            ];
+            ui.ctx().fonts_mut(|fonts| {
+                let mut missing: Vec<(char, &str)> = Vec::new();
+                for (ch, usage) in symbols {
+                    if !fonts.has_glyph(&body, ch) {
+                        missing.push((ch, usage));
+                    }
+                }
+                assert!(
+                    missing.is_empty(),
+                    "这些符号在正文字体里没有字形（会显示成方块）：{missing:?}"
+                );
+            });
+        });
+        // 测试不渲染纹理，显式丢弃字体增量，否则 epaint 在 Drop 时按未应用增量 panic
+        output.textures_delta.clear();
+    }
 }

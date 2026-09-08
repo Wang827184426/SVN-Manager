@@ -9,6 +9,7 @@ mod history;
 mod jobs;
 mod svn;
 mod update;
+mod worklog;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -255,6 +256,21 @@ pub struct SvnApp {
     pub show_update_confirm: bool,
     /// 最近一次下载新版本失败的原因（None = 没在失败状态）；对话框里内联显示
     pub update_error: Option<String>,
+    /// AI 工作日志：从各目录历史页勾选的本人提交（快照，跨页面保留）
+    pub ai_picks: Vec<worklog::AiPick>,
+    /// AI 日志窗口里「补充其他目录」下拉框当前选中的目录编号
+    pub ai_pick_dir: usize,
+    /// AI 工作日志窗口开关
+    pub show_worklog: bool,
+    /// 日志模式开关：开启后各目录「提交记录」页里本人提交的版本行才出现勾选框
+    ///（右上角「AI 日志」按钮以开关形式控制，见 header）
+    pub ai_mode: bool,
+    /// AI 工作日志：额外提示词（只在当前会话保留，不写配置）
+    pub ai_extra: String,
+    /// AI 工作日志：最近一次生成的日志正文（可直接编辑）
+    pub ai_result: String,
+    /// AI 工作日志：最近一次生成失败的原因
+    pub ai_error: String,
 }
 
 impl SvnApp {
@@ -337,6 +353,13 @@ impl SvnApp {
             update_check_at: Some(Instant::now() + Duration::from_secs(3)),
             show_update_confirm: false,
             update_error: None,
+            ai_picks: Vec::new(),
+            ai_pick_dir: 0,
+            show_worklog: false,
+            ai_mode: false,
+            ai_extra: String::new(),
+            ai_result: String::new(),
+            ai_error: String::new(),
         };
         app.push(Level::Info, format!("{APP_TITLE} 已启动（配置：{}）", config::config_file().display()));
         if app.svn.available() {
@@ -1623,6 +1646,21 @@ impl SvnApp {
                         let _ = bytes;
                     }
                 }
+                (Kind::AiLog, Data::AiLog { ok, content, message }) => {
+                    // 结果整块回传（非流式）：成功直接放进生成窗口，失败原因也显示在窗口里
+                    if ok {
+                        self.ai_result = content.clone();
+                        self.ai_error.clear();
+                        self.push(
+                            Level::Success,
+                            format!("AI 日志已生成（{} 字），可在「AI 工作日志」窗口查看与复制", content.chars().count()),
+                        );
+                        self.hint("AI 日志已生成");
+                    } else {
+                        self.ai_error = message.clone();
+                        self.push(Level::Error, format!("AI 生成日志失败：{message}"));
+                    }
+                }
                 (
                     Kind::Refresh,
                     Data::Wc {
@@ -1921,6 +1959,42 @@ impl SvnApp {
                 ui.label(RichText::new(format!("{running} 个任务：{label}")).weak().size(12.0));
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                // AI 日志：右上角的开关式入口。第一次点开启「日志模式」（各目录提交记录页
+                // 里本人提交的版本行出现勾选框）；开着但没勾选时显示「取消日志模式」，再点
+                // 退出；有勾选后显示数量，点击弹出「AI 工作日志」窗口（模式保持开启，
+                // 方便关掉窗口后去别的目录继续勾）。
+                let picks = self.ai_picks.len();
+                let (ai_label, ai_hover) = if !self.ai_mode {
+                    (
+                        "AI 日志".to_owned(),
+                        "开启日志模式：各目录「提交记录」页里本人提交的版本行会出现勾选框，\n\
+                         勾选后本按钮变成「AI 日志（N）」，点击弹出「AI 工作日志」窗口".to_owned(),
+                    )
+                } else if picks == 0 {
+                    (
+                        "取消日志模式".to_owned(),
+                        "退出日志模式：隐藏提交记录页里的勾选框（已勾选的提交保留，重新开启后继续显示）".to_owned(),
+                    )
+                } else {
+                    (
+                        format!("AI 日志（{picks}）"),
+                        "打开「AI 工作日志」窗口：把勾选的提交交给 AI，按「口吻」整理成工作日志\n\
+                         （接口在 设置 → AI 日志 里配置；模式保持开启，可到其他目录继续勾选）".to_owned(),
+                    )
+                };
+                if ui
+                    .button(RichText::new(ai_label).strong())
+                    .on_hover_text(ai_hover)
+                    .clicked()
+                {
+                    if !self.ai_mode {
+                        self.ai_mode = true;
+                    } else if picks == 0 {
+                        self.ai_mode = false;
+                    } else {
+                        self.show_worklog = true;
+                    }
+                }
                 // 检查到新版本时这里常驻入口，点击直接弹确认框，确认后即开始更新
                 if self
                     .update_info
@@ -2148,9 +2222,9 @@ impl SvnApp {
                         ui.label(RichText::new(text).weak().size(11.5));
                     }
                 }
-                // 六个按钮必须排在同一个 horizontal 里：「📂 🕘 ⬆ ⬇」这些图标中文正文字体里
-                // 没有字形，会兜底到 emoji 字体，行高比纯中文略高一点；一旦把「移除 / 更多」
-                // 和它们分成两组并列，两组就会按各自高度居中而错开约半个像素（实测 0.5px）。
+                // 六个按钮必须排在同一个 horizontal 里：不同按钮的文字混排高度略有差异
+                // （例如含 ↑↓ 箭头时行高比纯中文略高），一旦把「移除 / 更多」和它们分成
+                // 两组并列，两组就会按各自高度居中而错开约半个像素（实测 0.5px）。
                 // 同一个 horizontal 内由同一个 Ui 摆放，中心线才完全一致。
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
 
@@ -2179,14 +2253,14 @@ impl SvnApp {
                             }
                         }
                         ui.menu_button("更多", |ui| {
-                            if ui.button("✨ 修改别名").clicked() {
+                            if ui.button("修改别名").clicked() {
                                 self.edit_label = Some(index);
                                 self.label_buf = self.cfg.dirs[index].label.clone();
                                 self.label_focus = true;
                                 ui.close();
                             }
                             if ui
-                                .button("🔗 修改仓库地址")
+                                .button("修改仓库地址")
                                 .on_hover_text("服务器换地址 / 换端口后，把工作副本指到新的仓库地址，只改元数据不动文件")
                                 .clicked()
                             {
@@ -2230,9 +2304,9 @@ impl SvnApp {
                             // menu_button 的菜单点任何地方都会收起，输入框一点就没了
                             if ui
                                 .button(if self.cfg.dirs[index].bc_filter.is_empty() {
-                                    "✏ 设置对比筛选条件"
+                                    "设置对比筛选条件"
                                 } else {
-                                    "✏ 修改对比筛选条件"
+                                    "修改对比筛选条件"
                                 })
                                 .on_hover_text("文件夹对比的对比筛选条件，存在本程序配置里，不依赖本机 Beyond Compare 记录；换机器、换人也能一致地带出")
                                 .clicked()
@@ -2272,18 +2346,18 @@ impl SvnApp {
                                 ui.close();
                             }
                         });
-                        if ui.button("📂 打开目录").clicked() {
+                        if ui.button("打开目录").clicked() {
                             self.open_folder(index);
                         }
-                        if ui.button("🕘 历史").clicked() {
+                        if ui.button("历史").clicked() {
                             self.selected = Some(index);
                             self.open_history(index);
                         }
-                        if ui.button("⬆ 上传").clicked() {
+                        if ui.button("↑ 上传").clicked() {
                             self.selected = Some(index);
                             self.open_commit(index);
                         }
-                        if ui.button("⬇ 更新").clicked() {
+                        if ui.button("↓ 更新").clicked() {
                             self.selected = Some(index);
                             self.confirm_remove = None;
                             self.spawn_update(index);
@@ -2588,7 +2662,7 @@ impl SvnApp {
                 }
                 ui.horizontal(|ui| {
                     let ready = !running && !new_url.is_empty() && new_url != current;
-                    if ui.add_enabled_ui(ready, |ui| ui.button("✔ 执行 relocate")).inner.clicked() {
+                    if ui.add_enabled_ui(ready, |ui| ui.button("✓ 执行 relocate")).inner.clicked() {
                         dialog.error.clear();
                         self.spawn_relocate(dir, from.to_owned(), to.to_owned(), new_url.clone());
                     }
@@ -3317,6 +3391,60 @@ impl SvnApp {
                             ui.label(RichText::new("未配置服务端地址，不会检查更新").size(11.5).weak());
                         }
                     });
+                    ui.collapsing("AI 日志（调用 AI 生成工作日志）", |ui| {
+                        ui.label(
+                            RichText::new(
+                                "在历史页勾选本人提交，把「文件名 + 修改内容」发给 AI 整理成工作日志。\n\
+                                 接口需兼容 OpenAI /chat/completions 格式（DeepSeek、通义、Kimi 等均支持）；\
+                                 只填 base 地址也行，程序会自动补全 /chat/completions。\
+                                 密钥保存在本机配置文件，请求经系统 curl 发送。",
+                            )
+                            .size(11.5)
+                            .weak(),
+                        );
+                        ui.horizontal(|ui| {
+                            ui.label("服务地址");
+                            ui.add_sized(
+                                Vec2::new((ui.available_width() - 90.0).max(180.0), 22.0),
+                                TextEdit::singleline(&mut self.cfg.ai_url).hint_text(
+                                    "如 https://api.deepseek.com（通义：https://dashscope.aliyuncs.com/compatible-mode/v1）",
+                                ),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("API Key");
+                            ui.add_sized(
+                                Vec2::new((ui.available_width() - 90.0).max(180.0), 22.0),
+                                TextEdit::singleline(&mut self.cfg.ai_key)
+                                    .password(true)
+                                    .hint_text("sk-…"),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.label("模型名  ");
+                            ui.add_sized(
+                                Vec2::new((ui.available_width() - 90.0).max(180.0), 22.0),
+                                TextEdit::singleline(&mut self.cfg.ai_model)
+                                    .hint_text("如 deepseek-chat / gpt-4o-mini / qwen-plus"),
+                            );
+                        });
+                        ui.label(RichText::new("口吻（生成窗口打开时预填，长期保留）").size(11.5).weak());
+                        ui.add(
+                            TextEdit::multiline(&mut self.cfg.ai_tone)
+                                .desired_rows(2)
+                                .desired_width(f32::INFINITY)
+                                .hint_text("例：我是后端组的张三，日志写给部门周报，用第一人称、简洁正式"),
+                        );
+                        if ui.button("保存 AI 设置").clicked() {
+                            self.persist();
+                            self.hint("AI 日志设置已保存");
+                        }
+                        ui.label(
+                            RichText::new("注意：密钥以明文保存于本机配置文件；生成时把勾选的提交说明与文件清单发给该服务，注意涉密内容。")
+                                .weak()
+                                .size(11.0),
+                        );
+                    });
                 });
             });
         self.show_settings = open;
@@ -3466,6 +3594,7 @@ impl eframe::App for SvnApp {
         self.upload_all_dialog(&ctx);
         self.file_diff_window(&ctx);
         self.file_log_window(&ctx);
+        self.worklog_window(&ctx);
     }
 }
 

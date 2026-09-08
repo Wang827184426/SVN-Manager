@@ -264,6 +264,8 @@ impl SvnApp {
             ui.label(RichText::new(format!("提交记录：{}", page.label)).size(17.0).strong());
             ui.label(RichText::new(path).size(12.0).weak());
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                // AI 日志入口统一在主界面右上角：日志模式开启后本页本人提交行才有勾选框，
+                // 勾选后点右上角「AI 日志（N）」弹窗口，这里不再重复放按钮
                 if writing || loading {
                     ui.spinner();
                 }
@@ -408,6 +410,8 @@ impl SvnApp {
                             .next()
                             .unwrap_or("(无提交说明)")
                             .to_owned();
+                        // 是本机登录人的提交才给勾选 AI 日志的复选框
+                        let own = !page.author.trim().is_empty() && entry.author == page.author;
                         // 配色跟「提交记录·文件名」明细窗口一致：白底灰边（深色主题深底浅灰边）
                         let (row_fill, row_stroke) = if ui.visuals().dark_mode {
                             (Color32::from_gray(40), Color32::from_gray(65))
@@ -425,6 +429,36 @@ impl SvnApp {
                             .stroke(egui::Stroke::new(1.0, row_stroke))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
+                                    // 日志模式开启时才显示勾选框（右上角「AI 日志」开关控制）；
+                                    // 是本机登录人的提交才有。勾选后收进「AI 工作日志」，跨目录汇总，
+                                    // 状态每帧按勾选清单现算
+                                    if own && self.ai_mode {
+                                        let mut checked = self
+                                            .ai_picks
+                                            .iter()
+                                            .any(|pick| pick.dir == page.dir && pick.entry.revision == entry.revision);
+                                        if ui
+                                            .checkbox(&mut checked, "")
+                                            .on_hover_text(
+                                                "勾选后加入「AI 工作日志」（可以到多个目录的历史页里反复勾选，\n\
+                                                 最后点右上角「AI 日志（N）」弹出窗口，一次性交给 AI 生成工作日志）",
+                                            )
+                                            .changed()
+                                        {
+                                            if checked {
+                                                self.ai_picks.push(crate::worklog::AiPick {
+                                                    dir: page.dir,
+                                                    dir_label: page.label.clone(),
+                                                    entry: entry.clone(),
+                                                });
+                                            } else {
+                                                self.ai_picks.retain(|pick| {
+                                                    !(pick.dir == page.dir
+                                                        && pick.entry.revision == entry.revision)
+                                                });
+                                            }
+                                        }
+                                    }
                                     ui.label(highlight(
                                         ui,
                                         &format!("r{}", entry.revision),
@@ -456,7 +490,17 @@ impl SvnApp {
                                 // 铺满整行：内容画完后把内部 ui 撑到剩余全宽，Frame 随之占满一行
                                 ui.set_width(ui.available_width());
                                 let rect = ui.max_rect();
-                                if ui.interact(rect, ui.id().with(("log-row", index)), egui::Sense::click()).clicked() {
+                                // 有复选框时把整行点击区从行首缩进 26px：不缩的话这一块
+                                // 最后注册、盖在复选框上面，点复选框会被当成点行
+                                let click_rect = if own {
+                                    egui::Rect::from_min_max(
+                                        egui::pos2(rect.left() + 26.0, rect.top()),
+                                        rect.max,
+                                    )
+                                } else {
+                                    rect
+                                };
+                                if ui.interact(click_rect, ui.id().with(("log-row", index)), egui::Sense::click()).clicked() {
                                     page.picked = Some(index);
                                 }
                             });

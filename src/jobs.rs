@@ -16,6 +16,8 @@ pub enum Kind {
     FileLog,
     /// 检查版本更新（读服务端 latest.json）
     CheckUpdate,
+    /// AI 生成工作日志（把勾选的提交记录发给 AI，整块结果一次性回传，dir 恒为 usize::MAX）
+    AiLog,
     /// 下载新版本 exe 到临时目录（下载与校验都在程序内完成）
     DownloadUpdate,
     Update,
@@ -47,6 +49,12 @@ pub enum Data {
         ok: bool,
         message: String,
         bytes: u64,
+    },
+    /// AI 生成工作日志结果（ok=false 时 message 是失败原因，content 为空）
+    AiLog {
+        ok: bool,
+        content: String,
+        message: String,
     },
     Wc {
         dir: usize,

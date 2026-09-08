@@ -44,6 +44,14 @@ pub struct Config {
     pub update_after_commit: bool,
     /// 开机自动启动（实际生效写在注册表 HKCU Run 键里，这里只做记录）
     pub auto_start: bool,
+    /// AI 生成工作日志：接口地址（OpenAI 兼容的 /chat/completions 完整地址）
+    pub ai_url: String,
+    /// AI 生成工作日志：接口密钥（明文保存在本机配置文件）
+    pub ai_key: String,
+    /// AI 生成工作日志：模型名（如 deepseek-chat / gpt-4o-mini）
+    pub ai_model: String,
+    /// AI 生成工作日志：口吻说明（生成窗口打开时预填进输入框，随改随存）
+    pub ai_tone: String,
 }
 
 impl Default for Config {
@@ -66,6 +74,11 @@ impl Default for Config {
             update_after_commit: true,
             // 默认关闭：开机自启要用户自己决定，开了就写 HKCU Run 键
             auto_start: false,
+            // AI 日志的地址 / 密钥 / 模型都由用户自己提供，默认全空
+            ai_url: String::new(),
+            ai_key: String::new(),
+            ai_model: String::new(),
+            ai_tone: String::new(),
         }
     }
 }
@@ -125,5 +138,10 @@ mod tests {
         assert!(parsed.update_after_commit);
         // 开机自启是后加的设置：老配置没有也要按默认值（关闭）补齐
         assert!(!parsed.auto_start);
+        // AI 日志是后加的设置：老配置没有也要按空值补齐
+        assert!(parsed.ai_url.is_empty());
+        assert!(parsed.ai_key.is_empty());
+        assert!(parsed.ai_model.is_empty());
+        assert!(parsed.ai_tone.is_empty());
     }
 }
